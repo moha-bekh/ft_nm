@@ -1,0 +1,69 @@
+version: "3"
+
+vars:
+  IMAGE: ft-nm-dev
+  CONTAINER: ft-nm-dev
+  FILE: '{{default "tests/out/basic64.o" .FILE}}'
+  OPTS: '{{default "" .OPTS}}'
+
+tasks:
+  build:
+    desc: Build the linux/amd64 development image
+    cmds:
+      - docker build --platform=linux/amd64 -t {{.IMAGE}} -f "{{.TASKFILE_DIR}}/Dockerfile" "{{.TASKFILE_DIR}}"
+
+  up:
+    desc: Open an interactive shell in the development container
+    cmds:
+      - |
+        docker run --platform=linux/amd64 --name {{.CONTAINER}} -it --rm \
+        -v "{{.TASKFILE_DIR}}:/work" \
+        {{.IMAGE}} bash
+
+  shell:
+    desc: Open a second shell in the running development container
+    cmds:
+      - docker exec -it {{.CONTAINER}} bash
+
+  re:
+    desc: Rebuild the image and open a shell
+    cmds:
+      - task -t "{{.TASKFILE_DIR}}/Taskfile.yaml" build
+      - task -t "{{.TASKFILE_DIR}}/Taskfile.yaml" up
+
+  make:
+    desc: Run make inside the running container
+    cmds:
+      - docker exec -it {{.CONTAINER}} make
+
+  clean:
+    desc: Clean project outputs inside the running container
+    cmds:
+      - docker exec -it {{.CONTAINER}} make fclean
+      - docker exec -it {{.CONTAINER}} rm -rf tests/out
+
+  samples:
+    desc: Generate 32-bit and 64-bit ELF sample files
+    cmds:
+      - docker exec -it {{.CONTAINER}} sh tests/make_samples.sh
+
+  compare:
+    desc: Compare ft_nm output with GNU nm for generated samples
+    cmds:
+      - docker exec -it {{.CONTAINER}} sh tests/compare.sh
+
+  valgrind:
+    desc: Run ft_nm under Valgrind for one file
+    cmds:
+      - docker exec -it {{.CONTAINER}} make
+      - docker exec -it {{.CONTAINER}} valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes ./ft_nm {{.OPTS}} {{.FILE}}
+
+  readelf:
+    desc: Inspect one sample with readelf
+    cmds:
+      - docker exec -it {{.CONTAINER}} readelf -h -S -s {{.FILE}}
+
+  nm:
+    desc: Inspect one sample with GNU nm
+    cmds:
+      - docker exec -it {{.CONTAINER}} nm {{.OPTS}} {{.FILE}}

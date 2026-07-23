@@ -1,0 +1,11 @@
+.DS_Store
+.bash_history
+*.o
+*.a
+*.so
+*.out
+a.out
+main
+ft_nm
+tests/out/
+build

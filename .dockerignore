@@ -1,0 +1,9 @@
+.git
+.DS_Store
+*.o
+*.a
+*.so
+*.out
+ft_nm
+tests/out
+build
