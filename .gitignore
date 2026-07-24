@@ -9,3 +9,5 @@ main
 ft_nm
 tests/out/
 build
+dlst/obj
+libft/obj

@@ -97,10 +97,101 @@ void print_debug_options(t_options *options) {
   );
 }
 
+char get_symbol_type(Elf64_Sym *sym, Elf64_Shdr *shdr) {
+  if (sym->st_shndx == SHN_UNDEF)
+    return 'U';
+  else if (sym->st_shndx == SHN_ABS)
+    return 'A';
+  else if (sym->st_shndx == SHN_COMMON)
+    return 'C';
+  else if (shdr[sym->st_shndx].sh_type == SHT_NOBITS &&
+           shdr[sym->st_shndx].sh_flags & SHF_ALLOC &&
+           shdr[sym->st_shndx].sh_flags & SHF_WRITE)
+    return 'B';
+  else if (shdr[sym->st_shndx].sh_type == SHT_PROGBITS &&
+           shdr[sym->st_shndx].sh_flags & SHF_ALLOC &&
+           shdr[sym->st_shndx].sh_flags & SHF_EXECINSTR)
+    return 'T';
+  else if (shdr[sym->st_shndx].sh_type == SHT_PROGBITS &&
+           shdr[sym->st_shndx].sh_flags & SHF_ALLOC &&
+           !(shdr[sym->st_shndx].sh_flags & SHF_EXECINSTR))
+    return 'R';
+  else if (shdr[sym->st_shndx].sh_type == SHT_PROGBITS &&
+           !(shdr[sym->st_shndx].sh_flags & SHF_ALLOC))
+    return 'D';
+  else
+    return '?';
+}
+
+int elf_64(t_nm *nm) {
+
+  // elf header
+  Elf64_Ehdr *ehdr = (Elf64_Ehdr *)nm->file_ptr;
+  // section header table
+  Elf64_Shdr *shdr = (Elf64_Shdr *)((char *)nm->file_ptr + ehdr->e_shoff);
+  // section header for the section header string table
+  Elf64_Shdr *shstrtab_hdr = &shdr[ehdr->e_shstrndx];
+  // ptr to section header string table
+  char *shstrtab = (char *)nm->file_ptr + shstrtab_hdr->sh_offset;
+
+  // go through section headers to find symbol table
+  for (int i = 0; i < ehdr->e_shnum; i++) {
+    if (shdr[i].sh_type != SHT_SYMTAB)
+      continue;
+
+    // symbol table
+    Elf64_Sym *symtab = (Elf64_Sym *)((char *)nm->file_ptr + shdr[i].sh_offset);
+    int sym_count = shdr[i].sh_size / shdr[i].sh_entsize;
+    unsigned int section_link = shdr[i].sh_link;
+    // string table
+    char *strtab = (char *)nm->file_ptr + shdr[section_link].sh_offset;
+
+    for (int j = 0; j < sym_count; j++) {
+
+      t_symbol *symbol = malloc(sizeof(t_symbol));
+      if (!symbol) {
+        ft_dprintf(STDERR_FILENO, "ft_nm: malloc failed\n");
+        return EXIT_FAILURE;
+      }
+
+      symbol->value = symtab[j].st_value;
+      symbol->type = get_symbol_type(&symtab[j], shdr);
+      symbol->name = strtab + symtab[j].st_name;
+
+      if (!dlst_push_back(&nm->symbols, symbol)) {
+        ft_dprintf(STDERR_FILENO, "ft_nm: dlst_push_back failed\n");
+        return EXIT_FAILURE;
+      }
+    }
+  }
+  return EXIT_SUCCESS;
+}
+
+int elf_32(t_nm *nm) {
+  ft_dprintf(STDERR_FILENO, "ft_nm: 32-bit ELF files are not supported yet\n");
+  return EXIT_SUCCESS;
+}
+
+void print_symbols(t_nm *nm) {
+  t_dlst_node *node = dlst_head(nm->symbols);
+  while (node) {
+    t_symbol *symbol = (t_symbol *)dlst_data(node);
+    if (symbol->value == 0) {
+      dprintf(STDOUT_FILENO, "%16s %c %s\n", "", symbol->type, symbol->name);
+    } else {
+      dprintf(STDOUT_FILENO, "%.016lx %c %s\n", symbol->value, symbol->type, symbol->name);
+    }
+    node = dlst_next(node);
+  }
+}
+
 int nm(char *filename, t_options *options, int *_errno) {
 
   t_nm nm = {0};
+  nm.options = options;
+  nm._errno = _errno;
 
+  // TODO: parse_elf()
   int fd = open(filename, O_RDONLY);
   if (fd < 0) {
     ft_dprintf(STDERR_FILENO, "ft_nm: '%s': No such file\n", filename);
@@ -116,14 +207,23 @@ int nm(char *filename, t_options *options, int *_errno) {
     return EXIT_SUCCESS;
   }
 
+  if (S_ISDIR(st.st_mode)) {
+    ft_dprintf(STDERR_FILENO, "ft_nm: Warning: '%s' is a directory\n", filename);
+    *_errno += 1;
+    close(fd);
+    return EXIT_SUCCESS;
+  }
+
   // Check if the file is readable
   if (!(st.st_mode & (S_IRUSR | S_IRGRP | S_IROTH))) {
     *_errno += 1;
+    close(fd);
     return EXIT_SUCCESS;
   } 
 
-  if ((long unsigned int)st.st_size < sizeof(Elf64_Ehdr)) {
-    fprintf(stderr, "ft_nm: File is too small to be a valid ELF file\n");
+  if ((long unsigned int)st.st_size < sizeof(Elf32_Ehdr)) {
+    // ft_dprintf(STDERR_FILENO, "ft_nm: File is too small to be a valid ELF file\n");
+    *_errno += 1;
     close(fd);
     return EXIT_SUCCESS;
   }
@@ -132,7 +232,8 @@ int nm(char *filename, t_options *options, int *_errno) {
 
   nm.file_ptr = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
   if (nm.file_ptr == MAP_FAILED) {
-    perror("mmap");
+    perror("ft_nm: mmap:");
+    *_errno += 1;
     close(fd);
     return EXIT_FAILURE;
   }
@@ -141,19 +242,44 @@ int nm(char *filename, t_options *options, int *_errno) {
 
   if (ehdr->e_ident[0] != ELFMAG0 || ehdr->e_ident[1] != ELFMAG1 ||
       ehdr->e_ident[2] != ELFMAG2 || ehdr->e_ident[3] != ELFMAG3) {
-    fprintf(stderr, "ft_nme: %s: file format not recognized\n", filename);
+    ft_dprintf(STDERR_FILENO, "ft_nme: %s: file format not recognized\n", filename);
+    *_errno += 1;
     munmap(nm.file_ptr, st.st_size);
     close(fd);
     return EXIT_SUCCESS;
   }
 
-  if (ehdr->e_ident[EI_CLASS] != ELFCLASS64) {
-    fprintf(stderr, "File is not a 64-bit ELF file\n");
+  if (ehdr->e_ident[EI_CLASS] == ELFCLASS64)  {
+    nm.elf_class = Elf64;
+    if (elf_64(&nm)) {
+      *_errno += 1;
+      munmap(nm.file_ptr, st.st_size);
+      close(fd);
+      return EXIT_FAILURE;
+    }
+  } else if (ehdr->e_ident[EI_CLASS] == ELFCLASS32) {
+    nm.elf_class = Elf32;
+    if (elf_32(&nm)) {
+      *_errno += 1;
+      munmap(nm.file_ptr, st.st_size);
+      close(fd);
+      return EXIT_FAILURE;
+    }
+  } else {
+    ft_dprintf(STDERR_FILENO, "File is not a 64-bit ELF file\n");
+    *_errno += 1;
     munmap(nm.file_ptr, st.st_size);
     close(fd);
-    return (1);
+    return EXIT_SUCCESS;
   }
 
+  // TODO: filter_symbols()
+
+  // TODO: sort_symbols()
+
+  print_symbols(&nm);
+
+  dlst_clear(&nm.symbols, free);
   munmap(nm.file_ptr, st.st_size);
   close(fd);
   return EXIT_SUCCESS;

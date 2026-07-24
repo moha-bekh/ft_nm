@@ -26,7 +26,7 @@ typedef struct s_options {
 typedef struct s_symbol {
   char *name;
   uint64_t value;
-  char *type;
+  char type;
 } t_symbol;
 
 enum e_elf_class {
@@ -38,8 +38,11 @@ typedef struct s_nm {
   void *file_ptr;
   size_t file_size;
   t_dlst *symbols;
-  size_t sym_count;
+  // size_t sym_count;
   enum e_elf_class elf_class;
+
+  t_options *options;
+  int *_errno;
 } t_nm;
 
 // typedef struct s_symbol {
@@ -54,8 +57,7 @@ typedef struct s_nm {
 // typedef struct s_elf {
 //   Elf64_Ehdr *ehdr; // elf header
 //   Elf64_Shdr *shdr; // section header table
-//   Elf64_Shdr
-//       *shstrtab_hdr; // section header for the section header string table
+//   Elf64_Shdr *shstrtab_hdr; // section header for the section header string table
 //   char *shstrtab;    // ptr to section header string table
 //   Elf64_Sym *symtab; // symbol table
 //   long symtab_size;  // size of symbol table
