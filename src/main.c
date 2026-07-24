@@ -97,30 +97,51 @@ void print_debug_options(t_options *options) {
   );
 }
 
-char get_symbol_type(Elf64_Sym *sym, Elf64_Shdr *shdr) {
-  if (sym->st_shndx == SHN_UNDEF)
-    return 'U';
-  else if (sym->st_shndx == SHN_ABS)
-    return 'A';
-  else if (sym->st_shndx == SHN_COMMON)
-    return 'C';
-  else if (shdr[sym->st_shndx].sh_type == SHT_NOBITS &&
-           shdr[sym->st_shndx].sh_flags & SHF_ALLOC &&
-           shdr[sym->st_shndx].sh_flags & SHF_WRITE)
-    return 'B';
-  else if (shdr[sym->st_shndx].sh_type == SHT_PROGBITS &&
-           shdr[sym->st_shndx].sh_flags & SHF_ALLOC &&
-           shdr[sym->st_shndx].sh_flags & SHF_EXECINSTR)
-    return 'T';
-  else if (shdr[sym->st_shndx].sh_type == SHT_PROGBITS &&
-           shdr[sym->st_shndx].sh_flags & SHF_ALLOC &&
-           !(shdr[sym->st_shndx].sh_flags & SHF_EXECINSTR))
-    return 'R';
-  else if (shdr[sym->st_shndx].sh_type == SHT_PROGBITS &&
-           !(shdr[sym->st_shndx].sh_flags & SHF_ALLOC))
-    return 'D';
-  else
-    return '?';
+char get_symbol_type(Elf64_Sym *sym, Elf64_Shdr *shdr)
+{
+    unsigned char bind = ELF64_ST_BIND(sym->st_info);
+    unsigned char type = ELF64_ST_TYPE(sym->st_info);
+    char          c;
+
+    // 1. Gestion des Weak Symbols
+    if (bind == STB_WEAK)
+    {
+        c = (type == STT_OBJECT) ? 'V' : 'W';
+        if (sym->st_shndx == SHN_UNDEF)
+            c = (type == STT_OBJECT) ? 'v' : 'w';
+        return (c);
+    }
+
+    // 2. Index de sections spéciaux
+    if (sym->st_shndx == SHN_UNDEF)
+        return ('U');
+    if (sym->st_shndx == SHN_ABS)
+        c = 'A';
+    else if (sym->st_shndx == SHN_COMMON)
+        c = 'C';
+    else
+    {
+        // 3. Déduction selon les flags de la section pointee par st_shndx
+        Elf64_Word sh_type  = shdr[sym->st_shndx].sh_type;
+        Elf64_Xword sh_flags = shdr[sym->st_shndx].sh_flags;
+
+        if (sh_type == SHT_NOBITS && (sh_flags & SHF_ALLOC))
+            c = 'B'; // .bss
+        else if (sh_type == SHT_PROGBITS && (sh_flags & SHF_EXECINSTR))
+            c = 'T'; // .text (code exécutable)
+        else if (sh_flags & SHF_WRITE)
+            c = 'D'; // .data (données mutables)
+        else if (sh_flags & SHF_ALLOC)
+            c = 'R'; // .rodata (lecture seule)
+        else
+            c = 'N'; // Debug info ou section non alloc
+    }
+
+    // 4. Si le binding est LOCAL, passer en minuscule (ex: T -> t, D -> d)
+    if (bind == STB_LOCAL && c >= 'A' && c <= 'Z')
+        c += 32;
+
+    return (c);
 }
 
 int elf_64(t_nm *nm) {
@@ -146,7 +167,14 @@ int elf_64(t_nm *nm) {
     // string table
     char *strtab = (char *)nm->file_ptr + shdr[section_link].sh_offset;
 
-    for (int j = 0; j < sym_count; j++) {
+    // symtab[0] == STN_UNDEF (is the null symbol, skip it)
+    for (int j = 1; j < sym_count; j++) {
+
+      unsigned char st_type = ELF64_ST_TYPE(symtab[j].st_info);
+      if (!nm->options->all) {
+        if (st_type == STT_FILE || st_type == STT_SECTION)
+          continue;
+      }
 
       t_symbol *symbol = malloc(sizeof(t_symbol));
       if (!symbol) {
@@ -172,17 +200,71 @@ int elf_32(t_nm *nm) {
   return EXIT_SUCCESS;
 }
 
-void print_symbols(t_nm *nm) {
+int is_external_symbol(char type)
+{
+  if (type >= 'A' && type <= 'Z')
+      return (1);
+
+  if (type == 'w')
+      return (1);
+
+  return (0);
+}
+
+int filter_symbols(t_nm *nm) {
   t_dlst_node *node = dlst_head(nm->symbols);
+  t_dlst_node *next;
+
   while (node) {
     t_symbol *symbol = (t_symbol *)dlst_data(node);
-    if (symbol->value == 0) {
-      dprintf(STDOUT_FILENO, "%16s %c %s\n", "", symbol->type, symbol->name);
-    } else {
-      dprintf(STDOUT_FILENO, "%.016lx %c %s\n", symbol->value, symbol->type, symbol->name);
+    next = dlst_next(node);
+
+    bool keep = true;
+
+    if (nm->options->undefined_only && symbol->type != 'U' && symbol->type != 'w')
+      keep = false;
+
+    if (nm->options->global_only && !is_external_symbol(symbol->type))
+      keep = false;
+
+    if (keep == false) {
+      if (!dlst_del(&nm->symbols, node, free)) {
+        ft_dprintf(STDERR_FILENO, "ft_nm: dlst_del failed\n");
+        return EXIT_FAILURE;
+      }
     }
-    node = dlst_next(node);
+    node = next;
   }
+  return EXIT_SUCCESS;
+}
+
+int sort_alpha(void *a, void *b) {
+  t_symbol *sym1 = (t_symbol *)a;
+  t_symbol *sym2 = (t_symbol *)b;
+
+  if (!sym1 || !sym1->name) return (-1);
+  if (!sym2 || !sym2->name) return (1);
+
+  return (ft_strcmp(sym1->name, sym2->name));
+}
+
+int sort_symbols(t_nm *nm) {
+  if (nm->options->no_sort) {
+    return EXIT_SUCCESS;
+  }
+  dlst_sort(nm->symbols, sort_alpha);
+  return EXIT_SUCCESS;
+}
+
+void print_sym(void *symbol) {
+    t_symbol *sym = (t_symbol *)symbol;
+
+    // Seuls les symboles Undefined ('U', 'w', 'v') avec une valeur 0 n'affichent pas leur adresse
+    if (sym->value == 0 && (sym->type == 'U' || sym->type == 'w' || sym->type == 'v')) {
+        dprintf(STDOUT_FILENO, "%16s %c %s\n", "", sym->type, sym->name);
+    } else {
+        dprintf(STDOUT_FILENO, "%016lx %c %s\n", sym->value, sym->type, sym->name);
+    }
 }
 
 int nm(char *filename, t_options *options, int *_errno) {
@@ -273,11 +355,20 @@ int nm(char *filename, t_options *options, int *_errno) {
     return EXIT_SUCCESS;
   }
 
-  // TODO: filter_symbols()
+  if (filter_symbols(&nm)) {
+    *_errno += 1;
+    munmap(nm.file_ptr, st.st_size);
+    close(fd);
+    return EXIT_FAILURE;
+  }
 
-  // TODO: sort_symbols()
+  sort_symbols(&nm);
 
-  print_symbols(&nm);
+  if (nm.options->rev_sort) {
+    dlst_foreach_reverse(nm.symbols, print_sym);
+  } else {
+    dlst_foreach(nm.symbols, print_sym);
+  }
 
   dlst_clear(&nm.symbols, free);
   munmap(nm.file_ptr, st.st_size);
@@ -291,6 +382,11 @@ int main(int ac, char **av) {
   parse_options(ac, av, &options);
 
   int _errno = 0;
+
+  if (ac == 1) {
+    if (nm("a.out", &options, &_errno))
+      return _errno;
+  }
 
   for (int i = 1; i < ac; i++) {
     if (av[i][0] == '-' && options.end == false) {
