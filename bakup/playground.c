@@ -2,7 +2,7 @@
 
 #include "print.c"
 
-char get_symbol_type(Elf64_Sym *sym, Elf64_Shdr *shdr) {
+char get_64_symbol_type(Elf64_Sym *sym, Elf64_Shdr *shdr) {
   if (sym->st_shndx == SHN_UNDEF)
     return 'U';
   else if (sym->st_shndx == SHN_ABS)
@@ -60,7 +60,7 @@ int main(int ac, char **av) {
     char *strtab = (char *)nm.file_ptr + nm.elf.shdr[section_link].sh_offset;
 
     for (int j = 0; j < sym_count; j++) {
-      char type = get_symbol_type(&symtab[j], nm.elf.shdr);
+      char type = get_64_symbol_type(&symtab[j], nm.elf.shdr);
       long long value = symtab[j].st_value;
       if (value == 0) {
         printf("%16s %c %s\n", "", type, strtab + symtab[j].st_name);
