@@ -7,7 +7,7 @@
 a.out
 main
 ft_nm
-tests/out/
+# tests/out/
 build
 dlst/obj
 libft/obj
