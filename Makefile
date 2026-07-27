@@ -14,7 +14,7 @@ NAME := ft_nm
 
 all: $(NAME)
 
-dep: $(NAME)
+dep:
 	make -C dlst
 	make -C libft
 

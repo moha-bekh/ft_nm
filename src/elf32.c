@@ -78,7 +78,14 @@ int elf_32(t_nm *nm) {
 
       symbol->value = symtab[j].st_value;
       symbol->type = get_32_symbol_type((Elf32_Sym *)&symtab[j], (Elf32_Shdr *)shdr);
-      symbol->name = strtab + symtab[j].st_name;
+      if (st_type == STT_SECTION) {
+        if (symtab[j].st_shndx < ehdr->e_shnum)
+          symbol->name = shstrtab + shdr[symtab[j].st_shndx].sh_name;
+        else
+          symbol->name = "";
+      } else {
+        symbol->name = strtab + symtab[j].st_name;
+      }
 
       if (!dlst_push_back(&nm->symbols, symbol)) {
         ft_dprintf(STDERR_FILENO, "ft_nm: dlst_push_back failed\n");

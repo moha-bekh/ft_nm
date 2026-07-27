@@ -66,7 +66,7 @@ int map_elf(t_nm *nm, char *filename) {
   } 
 
   if ((long unsigned int)st.st_size < sizeof(Elf32_Ehdr)) {
-    // ft_dprintf(STDERR_FILENO, "ft_nm: File is too small to be a valid ELF file\n");
+    ft_dprintf(STDERR_FILENO, "ft_nm: %s: file format not recognized\n", filename);
     close(fd);
     return NO_EXIT_FAILURE;
   }
