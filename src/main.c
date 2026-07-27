@@ -42,7 +42,7 @@ Display
 #include "ft_nm.h"
 
 
-int nm(char *filename, t_options *options) {
+static int nm(char *filename, t_options *options) {
 
   t_nm nm = {0};
   nm.options = options;
@@ -73,17 +73,38 @@ int nm(char *filename, t_options *options) {
   return EXIT_SUCCESS;
 }
 
+static int count_files(int ac, char **av, t_options *options)
+{
+    int count = 0;
+    bool end_opts = false;
+
+    for (int i = 1; i < ac; i++)
+    {
+        if (av[i][0] == '-' && av[i][1] != '\0' && !end_opts)
+        {
+            if (ft_strcmp(av[i], "--") == 0)
+                end_opts = true;
+        }
+        else
+            count++;
+    }
+    return (count);
+}
+
 int main(int ac, char **av) {
 
   t_options options = {0};
   parse_options(ac, av, &options);
 
-  int _errno = 0;
-
-  if (ac == 1) {
-    if (nm("a.out", &options))
-      return ++_errno;
+  int file_count = count_files(ac, av, &options);
+  if (file_count == 0)
+  {
+      if (nm("a.out", &options) != EXIT_SUCCESS)
+          return (EXIT_FAILURE);
+      return (EXIT_SUCCESS);
   }
+
+  int _errno = 0;
 
   for (int i = 1; i < ac; i++) {
     if (av[i][0] == '-' && options.end == false) {
@@ -91,9 +112,11 @@ int main(int ac, char **av) {
         options.end = true;
       }
     } else {
+      if (file_count > 1)
+        ft_dprintf(STDOUT_FILENO, "\n%s:\n", av[i]);
       int ret = nm(av[i], &options);
       if (ret == EXIT_FAILURE)
-        return ++_errno;
+        _errno += 1;
       else if (ret == NO_EXIT_FAILURE) {
         _errno += 1;
       }
