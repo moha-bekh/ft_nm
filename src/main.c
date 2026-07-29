@@ -41,8 +41,7 @@ Display
 
 #include "ft_nm.h"
 
-
-static int nm(char *filename, t_options *options) {
+static int nm(char *filename, t_options *options, int file_count) {
 
   t_nm nm = {0};
   nm.options = options;
@@ -62,6 +61,9 @@ static int nm(char *filename, t_options *options) {
 
   sort_symbols(&nm);
 
+  if (file_count > 1) {
+    ft_dprintf(STDOUT_FILENO, "\n%s:\n", filename);
+  }
   if (nm.options->rev_sort) {
     dlst_foreach_reverse(nm.symbols, nm.print);
   } else {
@@ -73,7 +75,7 @@ static int nm(char *filename, t_options *options) {
   return EXIT_SUCCESS;
 }
 
-static int count_files(int ac, char **av, t_options *options)
+static int count_files(int ac, char **av)
 {
     int count = 0;
     bool end_opts = false;
@@ -96,10 +98,10 @@ int main(int ac, char **av) {
   t_options options = {0};
   parse_options(ac, av, &options);
 
-  int file_count = count_files(ac, av, &options);
+  int file_count = count_files(ac, av);
   if (file_count == 0)
   {
-      if (nm("a.out", &options) != EXIT_SUCCESS)
+      if (nm("a.out", &options, file_count) != EXIT_SUCCESS)
           return (EXIT_FAILURE);
       return (EXIT_SUCCESS);
   }
@@ -112,14 +114,16 @@ int main(int ac, char **av) {
         options.end = true;
       }
     } else {
-      if (file_count > 1)
-        ft_dprintf(STDOUT_FILENO, "\n%s:\n", av[i]);
-      int ret = nm(av[i], &options);
+      int ret = nm(av[i], &options, file_count);
       if (ret == EXIT_FAILURE)
-        _errno += 1;
+      _errno += 1;
       else if (ret == NO_EXIT_FAILURE) {
         _errno += 1;
-      }
+      } 
+      // else {
+      // if (file_count > 1)
+      //   ft_dprintf(STDOUT_FILENO, "\n%s:\n", av[i]);
+      // }
     }
   }
   return _errno;

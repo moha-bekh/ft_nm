@@ -92,11 +92,11 @@ int parse_elf(t_nm *nm, char *filename) {
   }
 
   if (nm->elf_class == Elf64) {
-    if (elf_64(nm)) {
+    if (elf_64(nm, filename)) {
       return NO_EXIT_FAILURE;
     }
   } else if (nm->elf_class == Elf32) {
-    if (elf_32(nm)) {
+    if (elf_32(nm, filename)) {
       return NO_EXIT_FAILURE;
     }
   } else {

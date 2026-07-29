@@ -14,34 +14,24 @@ NAME := ft_nm
 
 all: $(NAME)
 
-dep:
+$(NAME): $(OBJS)
 	make -C dlst
 	make -C libft
+	cc -Wall -Wextra -Werror -MMD -MP -g3 $^ -L dlst -l dlst -L libft -l ft -o $@
 
-# -Wall -Wextra -Werror -MMD -MP -g3
-$(NAME): $(OBJS)
-	cc -g3 $^ -L dlst -l dlst -L libft -l ft -o $@
-
-# -Wall -Wextra -Werror -MMD -MP -g3
 build/%.o: src/%.c
 	mkdir -p $(dir $@)
-	cc -g3 -I inc -I dlst/inc -I libft/inc -c $< -o $@
+	cc -Wall -Wextra -Werror -MMD -MP -g3 -I inc -I dlst/inc -I libft/inc -c $< -o $@
 
 clean:
-	rm -f $(OBJS)
-
-clean-all:
-	rm -f $(OBJS)
 	make -C dlst clean
 	make -C libft clean
+	rm -f $(OBJS)
 
 fclean: clean
-	rm -f $(NAME)
-
-fclean-all:
-	rm -f $(NAME)
 	make -C dlst fclean
 	make -C libft fclean
+	rm -f $(NAME)
 
 re: fclean all
 

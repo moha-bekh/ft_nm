@@ -34,13 +34,14 @@ enum e_elf_class {
 };
 
 typedef struct s_nm {
+  char *file_name;
   void *file_ptr;
   size_t file_size;
   t_dlst *symbols;
 
   enum e_elf_class elf_class;
 
-  int (*parse)(struct s_nm *nm);
+  int (*parse)(struct s_nm *nm, char *filename);
   void (*print)(void *symbol);
 
   t_options *options;
@@ -50,8 +51,8 @@ void parse_options(int ac, char **av, t_options *options);
 
 int map_elf(t_nm *nm, char *filename);
 int parse_elf(t_nm *nm, char *filename);
-int elf_64(t_nm *nm);
-int elf_32(t_nm *nm);
+int elf_64(t_nm *nm, char *filename);
+int elf_32(t_nm *nm, char *filename);
 //
 int filter_symbols(t_nm *nm);
 
